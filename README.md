@@ -33,18 +33,58 @@
 python2verilog/
 ├── README.md           # 本文件
 ├── examples/           # 示例代码
-│   └── fir/            # FIR滤波器示例
+│   ├── fir/            # FIR滤波器示例
+│   │   ├── golden.py   # Golden Model（算法层）
+│   │   ├── cycle.py    # Cycle Model（行为层）
+│   │   ├── template.v  # Verilog模板（实现层）
+│   │   ├── tb_fir.v    # 测试平台（Testbench）
+│   │   └── test.py     # 验证脚本
+│   └── i2c_slave/      # I2C从机示例
 │       ├── golden.py   # Golden Model（算法层）
 │       ├── cycle.py    # Cycle Model（行为层）
 │       ├── template.v  # Verilog模板（实现层）
+│       ├── tb_i2c.v    # 测试平台（Testbench）
 │       └── test.py     # 验证脚本
 ├── framework/          # 核心框架
 │   ├── base.py         # Cycle Model基类
 │   ├── converter.py    # Python→Verilog转换器
 │   └── verifier.py     # 验证对比工具
 ├── tests/              # 测试向量
-└── artifacts/          # 仿真输出
+└── artifacts/          # 临时仿真输出（不纳入版本控制）
 ```
+
+## 文件放置规范
+
+### 目录职责
+
+| 目录 | 职责 | 纳入版本控制 |
+|------|------|-------------|
+| `examples/` | 示例代码（Golden/Cycle/Verilog/Testbench） | ✅ 是 |
+| `framework/` | 核心框架代码 | ✅ 是 |
+| `tests/` | 测试向量 | ✅ 是 |
+| `artifacts/` | 临时仿真输出（编译产物、波形文件、日志） | ❌ 否 |
+
+### 文件分类规则
+
+**必须放入 `examples/<模块>/` 的文件：**
+- `golden.py` - Golden Model（算法层）
+- `cycle.py` - Cycle Model（行为层）
+- `template.v` - Verilog模块源码
+- `tb_*.v` - 测试平台（Testbench）
+- `test.py` - 验证脚本
+
+**必须放入 `artifacts/` 的文件（不纳入版本控制）：**
+- `*.vvp` - 编译后的仿真二进制
+- `*.vcd` - 波形文件
+- `*.txt` - 仿真输出日志
+- `*.hex` - 生成的数据文件
+- 其他编译/仿真产物
+
+### 命名规范
+
+- 测试平台：`tb_<模块名>.v`（如 `tb_fir.v`, `tb_i2c.v`）
+- Verilog模块：`template.v`（每个示例目录一个）
+- Python文件：`golden.py`, `cycle.py`, `test.py`（固定命名）
 
 ## 快速开始
 
@@ -55,13 +95,27 @@ cd examples/fir
 python test.py
 ```
 
+### 运行I2C Slave示例验证
+
+```bash
+cd examples/i2c_slave
+python test.py
+```
+
 ### 验证结果
 
+**FIR示例：**
 ```
 Golden: [0, 1411, 5744, -3488, -14645, ...]
 Cycle:  [0, 1411, 5744, -3489, -14645, ...]
 Max error: 1 (允许≤2)
 PASS: Golden vs Cycle 验证通过
+```
+
+**I2C Slave示例：**
+```
+PASS: Golden vs Cycle 验证通过
+PASS: Cycle vs Verilog 逐位匹配验证通过
 ```
 
 ## 方法学价值
