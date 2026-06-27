@@ -35,7 +35,7 @@ python2verilog/
 ├── examples/           # 示例代码
 │   ├── fir/            # FIR滤波器示例
 │   │   ├── golden.py   # Golden Model（算法层）
-│   │   ├── cycle.py    # Cycle Model（行为层）
+│   │   ├── cycle.py    # Cycle Model（行为层，使用新框架）
 │   │   ├── template.v  # Verilog模板（实现层）
 │   │   ├── tb_fir.v    # 测试平台（Testbench）
 │   │   └── test.py     # 验证脚本
@@ -46,11 +46,121 @@ python2verilog/
 │       ├── tb_i2c.v    # 测试平台（Testbench）
 │       └── test.py     # 验证脚本
 ├── framework/          # 核心框架
-│   ├── base.py         # Cycle Model基类
-│   ├── converter.py    # Python→Verilog转换器
-│   └── verifier.py     # 验证对比工具
+│   ├── __init__.py     # 模块导出
+│   ├── fixed_point.py  # FixedPoint：固定位宽整数类型
+│   ├── base.py         # CycleModel基类 + 装饰器
+│   ├── dependency_checker.py  # 组合逻辑环路检测
+│   └── parallel.py     # 并行标注 + 资源估算
 ├── tests/              # 测试向量
+├── docs/               # 文档
+│   ├── phase1_summary.md
+│   └── cycle_model_principle.html
 └── artifacts/          # 临时仿真输出（不纳入版本控制）
+```
+
+## 核心框架模块
+
+### FixedPoint - 固定位宽整数
+
+解决 Python 任意精度整数与 Verilog 固定位宽之间的语义鸿沟。
+
+```python
+from framework import FixedPoint, fp
+
+# 创建 8 位有符号数
+a = fp(127, 8, signed=True)   # 范围 [-128, 127]
+b = fp(-50, 8, signed=True)
+
+# 加法自动扩展位宽防止溢出
+c = a + b  # FixedPoint(77, width=9, signed=True)
+
+# 乘法扩展位宽
+d = a * b  # FixedPoint(-6350, width=16, signed=True)
+
+# 强制截断
+e = c.truncate(8, signed=True)
+
+# 检查溢出
+print(c.overflowed)  # False
+```
+
+### CycleModel - 硬件行为模拟基类
+
+提供统一的 step()/compute()/clock() 接口，自动追踪信号。
+
+```python
+from framework import CycleModel, combinational, sequential
+
+class MyModule(CycleModel):
+    def __init__(self):
+        super().__init__()
+        self.reg_counter = fp(0, 8, signed=True)
+        self.wire_next = fp(0, 9, signed=True)
+    
+    @combinational
+    def compute(self, input_val):
+        self.wire_next = self.reg_counter + input_val
+        return self.wire_next.value
+    
+    @sequential
+    def clock(self):
+        self.reg_counter = self.wire_next.truncate(8, signed=True)
+```
+
+### DependencyChecker - 组合逻辑环路检测
+
+静态分析 compute() 中的变量依赖，检测潜在环路。
+
+```python
+from framework import DependencyChecker
+
+checker = DependencyChecker()
+errors = checker.check(my_model)
+if errors:
+    for err in errors:
+        print(f"环路: {err}")
+else:
+    print("✅ 无环路，组合逻辑安全")
+```
+
+### ResourceEstimator - FPGA 资源估算
+
+粗略评估 LUT/FF/DSP 使用量。
+
+```python
+from framework import estimate_resources
+
+resources = estimate_resources(my_model)
+print(f"FF: {resources['ff']}")
+print(f"LUT: {resources['lut']}")
+print(f"DSP: {resources['dsp']}")
+```
+
+### @parallel - 并行度标注
+
+标注可并行执行的计算，辅助资源估算。
+
+```python
+from framework import parallel
+
+class MyModule(CycleModel):
+    @parallel(channels=8, description="8通道并行处理")
+    def compute_channels(self):
+        for i in range(8):
+            self.reg_out[i] = self.compute_channel(self.reg_in[i])
+```
+
+### @bitwidth - 位宽标注装饰器
+
+为方法返回值添加位宽约束。
+
+```python
+from framework import bitwidth
+
+class MyModule(CycleModel):
+    @bitwidth(16, signed=True)
+    def compute_accumulator(self):
+        return self.reg_acc + self.reg_input  # 自动截断到16位
 ```
 
 ## 文件放置规范
@@ -62,6 +172,7 @@ python2verilog/
 | `examples/` | 示例代码（Golden/Cycle/Verilog/Testbench） | ✅ 是 |
 | `framework/` | 核心框架代码 | ✅ 是 |
 | `tests/` | 测试向量 | ✅ 是 |
+| `docs/` | 文档 | ✅ 是 |
 | `artifacts/` | 临时仿真输出（编译产物、波形文件、日志） | ❌ 否 |
 
 ### 文件分类规则
@@ -124,6 +235,9 @@ PASS: Cycle vs Verilog 逐位匹配验证通过
 2. **可审查性**：Python代码可被人类审查和理解
 3. **渐进式验证**：每步有明确验证点
 4. **可扩展性**：插件库可积累和复用
+5. **位宽安全**：FixedPoint 模拟硬件截断，避免溢出隐患
+6. **环路检测**：静态分析防止组合逻辑环路
+7. **资源估算**：粗略评估 FPGA 资源使用量
 
 ## 现阶段成果
 
@@ -131,6 +245,10 @@ PASS: Cycle vs Verilog 逐位匹配验证通过
 - ✅ Cycle Model实现时序/组合逻辑分离
 - ✅ Golden vs Cycle验证通过（最大误差1）
 - ✅ 方法学框架提取并持久化
+- ✅ FixedPoint 固定位宽整数类型
+- ✅ CycleModel 统一基类
+- ✅ 组合逻辑环路检测器
+- ✅ 并行度标注与资源估算
 
 ## 下一步方向
 

@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+body { font-family: 'Segoe UI', monospace; max-width: 950px; margin: 40px auto; padding: 20px; background: #1e1e1e; color: #d4d4d4; line-height: 1.6; }
+h1 { color: #569cd6; border-bottom: 2px solid #333; padding-bottom: 10px; }
+h2 { color: #4ec9b0; margin-top: 35px; border-bottom: 1px solid #333; padding-bottom: 8px; }
+h3 { color: #ce9178; margin-top: 25px; }
+code { background: #3c3c3c; padding: 2px 8px; border-radius: 4px; font-size: 0.95em; }
+pre { background: #252526; padding: 20px; overflow-x: auto; border-radius: 8px; border-left: 4px solid #569cd6; }
+.highlight { background: #264f78; padding: 2px 6px; border-radius: 3px; }
+.verilog { border-left-color: #f44747; }
+.concept { background: #1a3a1a; border-left: 4px solid #4caf50; padding: 15px; margin: 15px 0; border-radius: 5px; }
+.warning { background: #3a2a1a; border-left: 4px solid #ff9800; padding: 15px; margin: 15px 0; border-radius: 5px; }
+table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+td, th { padding: 12px; border: 1px solid #444; text-align: left; }
+th { background: #2d2d2d; color: #569cd6; }
+.flow { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
+.flow-box { background: #2d2d2d; padding: 10px 15px; border-radius: 8px; border: 1px solid #555; }
+.flow-arrow { color: #4caf50; font-size: 1.5em; }
+</style>
+</head>
+<body>
+<h1>🔬 Python 模拟 Verilog 行为的实现原理</h1>
+
+<h2>一、核心思想：显式分离时序与组合逻辑</h2>
+
+<div class="concept">
+<strong>关键洞察：</strong>Verilog 的核心难点在于区分"什么时候计算"和"什么时候存储"。Python 模拟的关键是<strong>显式分离</strong>这两个阶段。
+</div>
+
+<h3>1.1 两个核心函数</h3>
+
+<table>
+<tr><th>Python</th><th>Verilog 对应</th><th>作用</th></tr>
+<tr>
+<td><code>@combinational<br>def compute(self, scl, sda):</code></td>
+<td><code>always @(*) begin ... end</code></td>
+<td>组合逻辑：根据当前输入和寄存器状态，计算下一个状态</td>
+</tr>
+<tr>
+<td><code>@sequential<br>def clock(self):</code></td>
+<td><code>always @(posedge clk) begin ... end</code></td>
+<td>时序逻辑：在时钟上升沿，将组合逻辑的结果写入寄存器</td>
+</tr>
+</table>
+
+<h3>1.2 变量命名规范</h3>
+
+<table>
+<tr><th>前缀</th><th>含义</th><th>Verilog 对应</th><th>示例</th></tr>
+<tr>
+<td><code>reg_</code></td>
+<td>寄存器（时序）</td>
+<td><code>reg</code></td>
+<td><code>reg_state</code> → <code>reg [1:0] reg_state;</code></td>
+</tr>
+<tr>
+<td><code>wire_</code></td>
+<td>组合逻辑中间值</td>
+<td><code>wire</code> / <code>reg</code> (在always @(*)中)</td>
+<td><code>wire_next_state</code> → <code>reg [1:0] wire_next_state;</code></td>
+</tr>
+</table>
+
+<h2>二、执行流程：step() 函数</h2>
+
+<pre>
+def step(self, scl, sda):
+    self.scl_in = scl          # 1. 保存输入
+    self.sda_in = sda
+    self.compute(scl, sda)     # 2. 组合逻辑：计算下一状态
+    self.clock()               # 3. 时序逻辑：时钟上升沿，更新寄存器
+    return self.wire_sda       # 4. 返回输出</pre>
+
+<div class="flow">
+<div class="flow-box">输入<br><small>scl, sda</small></div>
+<div class="flow-arrow">→</div>
+<div class="flow-box" style="border-color:#4caf50;">组合逻辑<br><small>compute()</small></div>
+<div class="flow-arrow">→</div>
+<div class="flow-box" style="border-color:#f44747;">时序逻辑<br><small>clock()</small></div>
+<div class="flow-arrow">→</div>
+<div class="flow-box">输出<br><small>sda_out</small></div>
+</div>
+
+<h2>三、组合逻辑（compute）详解</h2>
+
+<h3>3.1 核心模式</h3>
+<pre>
+@combinational
+def compute(self, scl, sda):
+    # 1. 计算组合逻辑信号
+    self.wire_start = (not sda) and self.reg_sda_prev and scl and self.reg_scl_prev
+    
+    # 2. 根据当前状态(reg_state)和输入，计算下一状态(wire_next_state)
+    if self.wire_start:
+        self.wire_next_state = ADDR
+        self.wire_next_bit_cnt = 0
+    elif scl and (not self.reg_scl_prev):  # SCL上升沿
+        if self.reg_state == ADDR:
+            self.wire_next_shift = (self.reg_shift << 1) | sda
+            self.wire_next_bit_cnt = self.reg_bit_cnt + 1
+            ...
+    
+    # 3. 计算输出
+    if self.reg_state == ACK:
+        self.wire_sda = self.reg_ack</pre>
+
+<div class="warning">
+<strong>关键规则：</strong>compute() 中只能读取 <code>reg_*</code> 变量，只能写入 <code>wire_*</code> 变量。不能直接修改寄存器！
+</div>
+
+<h3>3.2 与 Verilog 的对应</h3>
+
+<table>
+<tr><th>Python (compute)</th><th>Verilog (always @*)</th></tr>
+<tr>
+<td><code>self.wire_start = (not sda) and self.reg_sda_prev and scl and self.reg_scl_prev</code></td>
+<td><code>assign wire_start = (!sda_in) && reg_sda_prev && scl && reg_scl_prev;</code></td>
+</tr>
+<tr>
+<td><code>self.wire_next_state = ADDR</code></td>
+<td><code>wire_next_state = ADDR;</code></td>
+</tr>
+<tr>
+<td><code>self.wire_next_shift = (self.reg_shift << 1) | sda</code></td>
+<td><code>wire_next_shift = {reg_shift[6:0], sda_in};</code></td>
+</tr>
+</table>
+
+<h2>四、时序逻辑（clock）详解</h2>
+
+<h3>4.1 核心模式</h3>
+<pre>
+@sequential
+def clock(self):
+    # 将所有 wire_* 值写入 reg_*
+    self.reg_state = self.wire_next_state
+    self.reg_shift = self.wire_next_shift
+    self.reg_bit_cnt = self.wire_next_bit_cnt
+    self.reg_sda_prev = self.sda_in
+    self.reg_scl_prev = self.scl_in
+    self.reg_is_write = self.wire_is_write
+    ...
+    # 数组更新
+    if self.wire_next_registers:
+        self.registers = self.wire_next_registers[:]</pre>
+
+<h3>4.2 与 Verilog 的对应</h3>
+
+<table>
+<tr><th>Python (clock)</th><th>Verilog (always @(posedge clk))</th></tr>
+<tr>
+<td><code>self.reg_state = self.wire_next_state</code></td>
+<td><code>reg_state <= wire_next_state;</code></td>
+</tr>
+<tr>
+<td><code>self.reg_shift = self.wire_next_shift</code></td>
+<td><code>reg_shift <= wire_next_shift;</code></td>
+</tr>
+<tr>
+<td><code>self.registers = self.wire_next_registers[:]</code></td>
+<td><code>reg_registers[reg_reg_ptr] <= wire_next_shift;</code></td>
+</tr>
+</table>
+
+<h2>五、装饰器的作用</h2>
+
+<pre>
+def combinational(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        return func(*args, **kwargs)
+    wrapper._logic_type = "combinational"  # 标记逻辑类型
+    return wrapper
+
+def sequential(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        return func(*args, **kwargs)
+    wrapper._logic_type = "sequential"     # 标记逻辑类型
+    return wrapper</pre>
+
+<div class="concept">
+<strong>当前实现：</strong>装饰器只是标记，不改变行为。<br>
+<strong>未来扩展：</strong>可以用于自动代码生成、静态检查、文档生成等。
+</div>
+
+<h2>六、为什么这种方法有效？</h2>
+
+<table>
+<tr><th>优势</th><th>说明</th></tr>
+<tr>
+<td><strong>可审查性</strong></td>
+<td>Python 代码比 Verilog 更易读，人类可以审查逻辑正确性</td>
+</tr>
+<tr>
+<td><strong>可验证性</strong></td>
+<td>Golden Model（算法）vs Cycle Model（硬件行为）可以对比验证</td>
+</tr>
+<tr>
+<td><strong>渐进式开发</strong></td>
+<td>先写 Golden Model 验证算法，再写 Cycle Model 模拟硬件，最后生成 Verilog</td>
+</tr>
+<tr>
+<td><strong>降低认知负担</strong></td>
+<td>AI 只需理解 compute()/clock() 模式，不需要理解 Verilog 语法</td>
+</tr>
+</table>
+
+<h2>七、完整示例：I2C 地址匹配</h2>
+
+<pre>
+# Python Cycle Model
+@combinational
+def compute(self, scl, sda):
+    if self.reg_state == ADDR:
+        self.wire_next_shift = (self.reg_shift << 1) | sda  # 移位
+        self.wire_next_bit_cnt = self.reg_bit_cnt + 1
+        if self.reg_bit_cnt == 7:
+            addr = self.wire_next_shift >> 1  # 使用 wire_next_shift！
+            rw = self.wire_next_shift & 1
+            if addr == self.slave_addr:
+                self.wire_next_state = ACK
+                self.wire_is_write = (rw == 0)
+
+# 对应 Verilog
+always @(*) begin
+    if (reg_state == ADDR) begin
+        wire_next_shift = {reg_shift[6:0], sda_in};
+        wire_next_bit_cnt = reg_bit_cnt + 1'd1;
+        if (reg_bit_cnt == 7) begin
+            if ((wire_next_shift[7:1] == SLAVE_ADDR[6:0])) begin  // 使用 wire_next_shift！
+                wire_next_state = ACK;
+                wire_is_write = !sda_in;
+            end
+        end
+    end
+end</pre>
+
+<p style="color:#888;margin-top:30px;">这就是 Python 模拟 Verilog 行为的核心原理：显式分离组合逻辑和时序逻辑，通过变量命名规范确保语义清晰，通过 step() 函数模拟时钟周期。</p>
+</body>
+</html>
