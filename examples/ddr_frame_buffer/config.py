@@ -101,8 +101,8 @@ CONFIG_FULL = FrameConfig(
     frame_height=2160,
     pixel_bits=16,
     ddr_capacity=1 * 1024 * 1024 * 1024,  # 1GB
-    page_size=20 * 1024 * 1024,  # 20MB
-    description='Full resolution 4K production config',
+    page_size=16 * 1024 * 1024,  # 16MB (2的幂，原20MB不是2的幂)
+    description='Full resolution 4K production config (16MB pages)',
 )
 
 # 配置字典

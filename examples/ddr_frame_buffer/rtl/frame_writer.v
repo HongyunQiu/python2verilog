@@ -2,9 +2,12 @@
 // 接收帧数据字节流，检测帧头帧尾，写入 DDR
 
 module frame_writer #(
-    parameter DATA_WIDTH    = 8,
-    parameter ADDR_WIDTH    = 32,
-    parameter PAGE_ID_WIDTH = 7
+    parameter DATA_WIDTH       = 8,
+    parameter ADDR_WIDTH       = 20,
+    parameter PAGE_ID_WIDTH    = 4,
+    parameter PAGE_SIZE        = 65536,
+    parameter [63:0] FRAME_HEADER  = 64'h5A5A5A5AEE11DD22,
+    parameter [63:0] FRAME_TRAILER = 64'h5A5A5A5AEE11DD23
 )(
     input        clk,
     input        rst_n,
@@ -44,9 +47,9 @@ module frame_writer #(
     reg [63:0] shift_reg;
     reg [6:0] shift_count;
     
-    // 帧头/帧尾检测
-    wire [63:0] header_le = 64'h5A5A5A5AEE11DD22;
-    wire [63:0] trailer_le = 64'h5A5A5A5AEE11DD23;
+    // 帧头/帧尾检测（移位寄存器大端序）
+    wire [63:0] header_le = 64'h22DD11EE5A5A5A5A;
+    wire [63:0] trailer_le = 64'h23DD11EE5A5A5A5A;
     
     wire header_match = (shift_reg == header_le);
     wire trailer_match = (shift_reg == trailer_le);
@@ -85,7 +88,7 @@ module frame_writer #(
                             if (allocate_ok) begin
                                 state <= IN_FRAME;
                                 current_page <= allocated_page;
-                                write_addr <= allocated_page * 20971520; // PAGE_SIZE = 20MB
+                                write_addr <= allocated_page * PAGE_SIZE;
                                 shift_count <= 0;
                                 shift_reg <= 0;
                             end

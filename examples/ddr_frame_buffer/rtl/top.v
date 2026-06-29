@@ -1,11 +1,40 @@
 // top.v - DDR Frame Buffer & Retransmit Manager 顶层模块
 // Cyclone10 + DDR4 Memory Interface IP
+// 参数化设计：支持 mini/test/full 三种配置
 
 module top #(
-    parameter DATA_WIDTH    = 8,
-    parameter ADDR_WIDTH    = 32,
-    parameter PAGE_ID_WIDTH = 7,
-    parameter NUM_PAGES     = 50
+    // === 帧参数 ===
+    parameter FRAME_WIDTH     = 128,
+    parameter FRAME_HEIGHT    = 128,
+    parameter PIXEL_BITS      = 16,
+    parameter PIXEL_BYTES     = 2,
+    parameter FRAME_DATA_SIZE = 32768,
+    parameter FRAME_TOTAL_SIZE = 32784,
+    
+    // === DDR 参数 ===
+    parameter PAGE_SIZE       = 65536,
+    parameter NUM_PAGES       = 16,
+    parameter DDR_CAPACITY    = 1048576,
+    
+    // === 位宽参数 ===
+    parameter PAGE_ID_WIDTH   = 4,
+    parameter ADDR_WIDTH      = 20,
+    parameter FRAME_OFFSET_WIDTH = 16,
+    parameter PKT_INDEX_WIDTH = 4,
+    parameter FRAME_ID_WIDTH  = 16,
+    
+    // === 包参数（固定） ===
+    parameter PACKET_PAYLOAD_SIZE = 4096,
+    parameter PACKET_HEADER_SIZE  = 12,
+    parameter PACKET_CRC_SIZE     = 4,
+    parameter PACKETS_PER_FRAME   = 9,
+    
+    // === 数据总线宽度 ===
+    parameter DATA_WIDTH      = 8,
+    
+    // === 帧头帧尾（固定） ===
+    parameter [63:0] FRAME_HEADER  = 64'h5A5A5A5AEE11DD22,
+    parameter [63:0] FRAME_TRAILER = 64'h5A5A5A5AEE11DD23
 )(
     input        clk,
     input        rst_n,
@@ -99,7 +128,7 @@ module top #(
         .complete_read(complete_read),
         .read_done_page_id(read_done_page_id),
         .status_req(1'b0),
-        .status_page_id(7'b0),
+        .status_page_id({PAGE_ID_WIDTH{1'b0}}),
         .status_page_state(status_page_state),
         .status_frame_id(status_frame_id),
         .frame_counter(frame_counter)
@@ -191,7 +220,7 @@ module top #(
         .retransmit_start_pkt(retransmit_start_pkt),
         .retransmit_num_pkts(retransmit_num_pkts),
         .frame_counter(frame_counter),
-        .next_write_page(7'b0)
+        .next_write_page({PAGE_ID_WIDTH{1'b0}})
     );
     
     // DDR 写接口

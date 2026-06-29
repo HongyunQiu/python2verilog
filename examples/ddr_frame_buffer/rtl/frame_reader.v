@@ -2,10 +2,11 @@
 // 从 DDR 读取指定页的帧数据，用于重发
 
 module frame_reader #(
-    parameter DATA_WIDTH    = 8,
-    parameter ADDR_WIDTH    = 32,
-    parameter PAGE_ID_WIDTH = 7,
-    parameter FRAME_TRAILER = 64'h5A5A5A5AEE11DD23
+    parameter DATA_WIDTH       = 8,
+    parameter ADDR_WIDTH       = 20,
+    parameter PAGE_ID_WIDTH    = 4,
+    parameter PAGE_SIZE        = 65536,
+    parameter [63:0] FRAME_TRAILER = 64'h5A5A5A5AEE11DD23
 )(
     input        clk,
     input        rst_n,
@@ -45,7 +46,7 @@ module frame_reader #(
     reg [63:0] shift_reg;
     reg [6:0] shift_count;
     
-    wire [63:0] trailer_le = 64'h5A5A5A5AEE11DD23;
+    wire [63:0] trailer_le = 64'h23DD11EE5A5A5A5A;
     wire trailer_match = (shift_reg == trailer_le);
     
     always @(posedge clk or negedge rst_n) begin
@@ -75,7 +76,7 @@ module frame_reader #(
                         start_read_req <= 1;
                         read_page_id <= page_id_in;
                         current_page <= page_id_in;
-                        read_addr <= page_id_in * 20*1024*1024;
+                        read_addr <= page_id_in * PAGE_SIZE;
                         shift_reg <= 0;
                         shift_count <= 0;
                         state <= READING;
