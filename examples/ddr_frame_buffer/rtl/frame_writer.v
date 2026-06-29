@@ -5,7 +5,32 @@ module frame_writer #(
     parameter DATA_WIDTH    = 8,
     parameter ADDR_WIDTH    = 32,
     parameter PAGE_ID_WIDTH = 7
-)(\n    input        clk,\n    input        rst_n,\n    \n    // 输入数据接口\n    input        data_valid,\n    input [DATA_WIDTH-1:0] data_in,\n    \n    // DDR 写接口\n    output reg   ddr_write_en,\n    output reg [ADDR_WIDTH-1:0] ddr_write_addr,\n    output reg [DATA_WIDTH-1:0] ddr_write_data,\n    \n    // 页管理器接口\n    output reg   allocate_req,\n    input        allocate_ok,\n    input [PAGE_ID_WIDTH-1:0] allocated_page,\n    \n    output reg   complete_write,\n    output reg [PAGE_ID_WIDTH-1:0] write_page_id,\n    \n    // 帧完成信号\n    output reg   frame_complete,\n    output reg [PAGE_ID_WIDTH-1:0] frame_page_id,\n    output reg [15:0] frame_id\n);
+)(
+    input        clk,
+    input        rst_n,
+    
+    // 输入数据接口
+    input        data_valid,
+    input [DATA_WIDTH-1:0] data_in,
+    
+    // DDR 写接口
+    output reg   ddr_write_en,
+    output reg [ADDR_WIDTH-1:0] ddr_write_addr,
+    output reg [DATA_WIDTH-1:0] ddr_write_data,
+    
+    // 页管理器接口
+    output reg   allocate_req,
+    input        allocate_ok,
+    input [PAGE_ID_WIDTH-1:0] allocated_page,
+    
+    output reg   complete_write,
+    output reg [PAGE_ID_WIDTH-1:0] write_page_id,
+    
+    // 帧完成信号
+    output reg   frame_complete,
+    output reg [PAGE_ID_WIDTH-1:0] frame_page_id,
+    output reg [15:0] frame_id
+);
 
     // 状态机
     localparam IDLE     = 2'b00;
@@ -19,7 +44,7 @@ module frame_writer #(
     reg [63:0] shift_reg;
     reg [6:0] shift_count;
     
-    // 帧头/帧尾检测（与移位寄存器匹配：先来的字节在高位）
+    // 帧头/帧尾检测
     wire [63:0] header_le = 64'h5A5A5A5AEE11DD22;
     wire [63:0] trailer_le = 64'h5A5A5A5AEE11DD23;
     
@@ -49,7 +74,7 @@ module frame_writer #(
             
             if (data_valid) begin
                 // 更新移位寄存器
-                shift_reg <= (shift_reg << 8) | {DATA_WIDTH{1'b0} } | data_in;
+                shift_reg <= (shift_reg << 8) | {{(DATA_WIDTH-8){1'b0}}, data_in};
                 shift_count <= shift_count + 1;
                 
                 case (state)

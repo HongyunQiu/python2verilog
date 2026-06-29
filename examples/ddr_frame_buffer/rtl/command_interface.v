@@ -25,9 +25,8 @@ module command_interface #(
     output reg [15:0] retransmit_num_pkts,
     
     // 状态查询
-    output reg [15:0] frame_counter,
-    output reg [PAGE_ID_WIDTH-1:0] next_write_page,
-    output reg [1:0] page_states [0:49]  // 50页状态
+    input [15:0] frame_counter,
+    input [PAGE_ID_WIDTH-1:0] next_write_page
 );
 
     // 寄存器地址映射

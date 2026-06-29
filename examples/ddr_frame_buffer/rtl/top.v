@@ -1,13 +1,11 @@
 // top.v - DDR Frame Buffer & Retransmit Manager 顶层模块
 // Cyclone10 + DDR4 Memory Interface IP
-// 实现图像帧的多页缓冲和重发管理
 
 module top #(
     parameter DATA_WIDTH    = 8,
     parameter ADDR_WIDTH    = 32,
     parameter PAGE_ID_WIDTH = 7,
-    parameter NUM_PAGES     = 50,
-    parameter PAGE_SIZE     = 20*1024*1024  // 20MB
+    parameter NUM_PAGES     = 50
 )(
     input        clk,
     input        rst_n,
@@ -37,9 +35,9 @@ module top #(
     input        avm_read,
     input        avm_write,
     input [31:0] avm_writedata,
-    output reg [31:0] avm_readdata,
-    output reg   avm_readdatavalid,
-    output reg   avm_waitrequest
+    output wire [31:0] avm_readdata,
+    output wire   avm_readdatavalid,
+    output wire   avm_waitrequest
 );
 
     // 页管理器信号
@@ -53,8 +51,8 @@ module top #(
     wire        complete_read;
     wire [PAGE_ID_WIDTH-1:0] read_done_page_id;
     wire [15:0] frame_counter;
-    wire [PAGE_ID_WIDTH-1:0] next_write_page;
-    wire [1:0] page_states [0:NUM_PAGES-1];
+    wire [1:0]  status_page_state;
+    wire [15:0] status_frame_id;
     
     // 帧写入器信号
     wire        frame_complete;
@@ -87,8 +85,6 @@ module top #(
     // 实例化页管理器
     page_manager #(
         .NUM_PAGES(NUM_PAGES),
-        .PAGE_SIZE(PAGE_SIZE),
-        .ADDR_WIDTH(ADDR_WIDTH),
         .PAGE_ID_WIDTH(PAGE_ID_WIDTH)
     ) u_page_manager (
         .clk(clk),
@@ -103,9 +99,9 @@ module top #(
         .complete_read(complete_read),
         .read_done_page_id(read_done_page_id),
         .status_req(1'b0),
-        .status_page_id(0),
-        .status_page_state(),
-        .status_frame_id(),
+        .status_page_id(7'b0),
+        .status_page_state(status_page_state),
+        .status_frame_id(status_frame_id),
         .frame_counter(frame_counter)
     );
     
@@ -195,11 +191,10 @@ module top #(
         .retransmit_start_pkt(retransmit_start_pkt),
         .retransmit_num_pkts(retransmit_num_pkts),
         .frame_counter(frame_counter),
-        .next_write_page(next_write_page),
-        .page_states(page_states)
+        .next_write_page(7'b0)
     );
     
-    // DDR 写接口复用
+    // DDR 写接口
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             ddr_write_en <= 0;
@@ -212,7 +207,7 @@ module top #(
         end
     end
     
-    // DDR 读接口复用
+    // DDR 读接口
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             ddr_read_req <= 0;
