@@ -7,48 +7,54 @@
 
 import sys
 import struct
+import argparse
 sys.path.insert(0, '/home/bjtc/workspace/python2verilog')
 
 from typing import Optional
 from framework import CycleModel, FixedPoint, fp, combinational, sequential
 
 # ============================================================
-# 常量定义
+# 可配置参数
 # ============================================================
+from config import (
+    FRAME_HEADER, FRAME_TRAILER, FRAME_HEADER_BYTES, FRAME_TRAILER_BYTES,
+    PACKET_PAYLOAD_SIZE, PACKET_HEADER_SIZE, PACKET_CRC_SIZE, PACKET_TOTAL_SIZE,
+    PACKET_TYPE_NORMAL, PACKET_TYPE_CONTROL, PACKET_TYPE_RETRANSMIT,
+    PAGE_STATE_FREE, PAGE_STATE_WRITING, PAGE_STATE_READY, PAGE_STATE_READING,
+    get_config, ALL_CONFIGS
+)
 
-FRAME_HEADER = 0x5A5A5A5AEE11DD22
-FRAME_TRAILER = 0x5A5A5A5AEE11DD23
-# 移位寄存器比较值（先来的字节在高位，与FRAME_HEADER/FRAME_TRAILER相同）
-FRAME_HEADER_LE = 0x5A5A5A5AEE11DD22
-FRAME_TRAILER_LE = 0x5A5A5A5AEE11DD23
+# 命令行参数
+parser = argparse.ArgumentParser()
+parser.add_argument('--config', choices=['mini', 'test', 'full'], default='test',
+                    help='Frame configuration (mini=32x32, test=128x128, full=3840x2160)')
+args, _ = parser.parse_known_args()
 
-FRAME_WIDTH = 3840
-FRAME_HEIGHT = 2160
-PIXEL_BYTES = 2
-FRAME_DATA_SIZE = FRAME_WIDTH * FRAME_HEIGHT * PIXEL_BYTES
-FRAME_TOTAL_SIZE = FRAME_DATA_SIZE + 16  # 头尾各8字节
+CFG = get_config(args.config)
 
-DDR_CAPACITY = 1 * 1024 * 1024 * 1024  # 1GB
-PAGE_SIZE = 20 * 1024 * 1024  # 20MB
-NUM_PAGES = 50
+# 从配置导出常量
+# 注意：移位寄存器中先来的字节在高位
+# FRAME_HEADER_BYTES = struct.pack('<Q', 0x5A5A5A5AEE11DD22) = b'\x22\xdd\x11\xee\x5a\x5a\x5a\x5a'
+# 移位寄存器左移：先来的字节在高位 → 0x22DD11EE5A5A5A5A
+FRAME_HEADER_LE = 0x22DD11EE5A5A5A5A  # 移位寄存器中帧头的值
+FRAME_TRAILER_LE = 0x23DD11EE5A5A5A5A  # 移位寄存器中帧尾的值
+FRAME_WIDTH = CFG.frame_width
+FRAME_HEIGHT = CFG.frame_height
+PIXEL_BYTES = CFG.pixel_bytes
+FRAME_DATA_SIZE = CFG.frame_data_size
+FRAME_TOTAL_SIZE = CFG.frame_total_size
 
-PACKET_PAYLOAD_SIZE = 4096
-PACKET_HEADER_SIZE = 12
-PACKET_CRC_SIZE = 4
-PACKET_TOTAL_SIZE = PACKET_HEADER_SIZE + PACKET_PAYLOAD_SIZE + PACKET_CRC_SIZE
+DDR_CAPACITY = CFG.ddr_capacity
+PAGE_SIZE = CFG.page_size
+NUM_PAGES = CFG.num_pages
 
-PACKETS_PER_FRAME = (FRAME_TOTAL_SIZE + PACKET_PAYLOAD_SIZE - 1) // PACKET_PAYLOAD_SIZE
+PACKETS_PER_FRAME = CFG.packets_per_frame
 
-# 包类型
-PACKET_TYPE_NORMAL = 0
-PACKET_TYPE_CONTROL = 1
-PACKET_TYPE_RETRANSMIT = 2
-
-# 页状态
-PAGE_STATE_FREE = 0
-PAGE_STATE_WRITING = 1
-PAGE_STATE_READY = 2
-PAGE_STATE_READING = 3
+# 计算位宽
+import math
+PAGE_ID_WIDTH = max(4, (NUM_PAGES - 1).bit_length())  # 至少4bit
+FRAME_OFFSET_WIDTH = max(16, (FRAME_TOTAL_SIZE - 1).bit_length())
+ADDR_WIDTH = max(20, (DDR_CAPACITY - 1).bit_length())
 
 
 # ============================================================
@@ -71,15 +77,15 @@ class DDR4Controller(CycleModel):
         self.memory = bytearray(capacity)
         
         # 写接口信号
-        self.reg_write_addr = fp(0, 32, signed=False)
+        self.reg_write_addr = fp(0, ADDR_WIDTH, signed=False)
         self.wire_write_data = fp(0, 8, signed=False)  # 8-bit 数据总线
         self.wire_write_valid = fp(0, 1, signed=False)
         self.wire_write_ready = fp(1, 1, signed=False)
         
         # 读接口信号
-        self.reg_read_addr = fp(0, 32, signed=False)
+        self.reg_read_addr = fp(0, ADDR_WIDTH, signed=False)
         self.reg_read_start = fp(0, 1, signed=False)
-        self.reg_read_count = fp(0, 32, signed=False)
+        self.reg_read_count = fp(0, ADDR_WIDTH, signed=False)
         self.wire_read_data = fp(0, 8, signed=False)
         self.wire_read_valid = fp(0, 1, signed=False)
         self.wire_read_ready = fp(1, 1, signed=False)
@@ -373,7 +379,7 @@ class FrameWriter(CycleModel):
                     if self.page_mgr.wire_allocate_ok.value:
                         self.reg_current_page = self.page_mgr.wire_allocated_page
                         self.reg_frame_offset = fp(0, 25, signed=False)
-                        self.frame_buffer.clear()
+                        # 不清空 frame_buffer，保留帧头字节
                         self.reg_shift_count = fp(0, 7, signed=False)
                         self.reg_shift_reg = fp(0, 64, signed=False)
         

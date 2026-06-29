@@ -20,31 +20,44 @@ from enum import IntEnum
 from typing import Optional, List, Dict, Tuple
 
 # ============================================================
-# 常量定义
+# 可配置参数
 # ============================================================
+from config import FrameConfig, get_config
 
-FRAME_HEADER = 0x5A5A5A5AEE11DD22
+# 默认使用测试配置（小尺寸），可通过命令行参数切换
+# 用法: python golden.py --config full  (使用全尺寸)
+#       python golden.py --config mini  (使用最小尺寸)
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument('--config', choices=['mini', 'test', 'full'], default='test',
+                    help='Frame configuration (mini=32x32, test=128x128, full=3840x2160)')
+args, _ = parser.parse_known_args()
+
+CFG = get_config(args.config)
+
+# 从配置中导出常量（保持向后兼容）
+FRAME_HEADER = CFG.frame_header if hasattr(CFG, 'frame_header') else 0x5A5A5A5AEE11DD22
 FRAME_TRAILER = 0x5A5A5A5AEE11DD23
 FRAME_HEADER_BYTES = struct.pack('<Q', FRAME_HEADER)
 FRAME_TRAILER_BYTES = struct.pack('<Q', FRAME_TRAILER)
 
-FRAME_WIDTH = 3840
-FRAME_HEIGHT = 2160
-PIXEL_BITS = 16
-PIXEL_BYTES = PIXEL_BITS // 8
-FRAME_DATA_SIZE = FRAME_WIDTH * FRAME_HEIGHT * PIXEL_BYTES  # 16,588,800
-FRAME_TOTAL_SIZE = FRAME_DATA_SIZE + 8 + 8  # 16,588,816
+FRAME_WIDTH = CFG.frame_width
+FRAME_HEIGHT = CFG.frame_height
+PIXEL_BITS = CFG.pixel_bits
+PIXEL_BYTES = CFG.pixel_bytes
+FRAME_DATA_SIZE = CFG.frame_data_size
+FRAME_TOTAL_SIZE = CFG.frame_total_size
 
-DDR_CAPACITY = 1 * 1024 * 1024 * 1024  # 1GB
-PAGE_SIZE = 20 * 1024 * 1024  # 20MB
-NUM_PAGES = DDR_CAPACITY // PAGE_SIZE  # 50
+DDR_CAPACITY = CFG.ddr_capacity
+PAGE_SIZE = CFG.page_size
+NUM_PAGES = CFG.num_pages
 
 PACKET_PAYLOAD_SIZE = 4096
 PACKET_HEADER_SIZE = 12
 PACKET_CRC_SIZE = 4
 PACKET_TOTAL_SIZE = PACKET_HEADER_SIZE + PACKET_PAYLOAD_SIZE + PACKET_CRC_SIZE
 
-PACKETS_PER_FRAME = (FRAME_TOTAL_SIZE + PACKET_PAYLOAD_SIZE - 1) // PACKET_PAYLOAD_SIZE  # 4050
+PACKETS_PER_FRAME = CFG.packets_per_frame
 
 # 包类型
 PACKET_TYPE_NORMAL = 0
